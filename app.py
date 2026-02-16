@@ -164,21 +164,21 @@ if st.button("Fetch Stats, Projections & Optimize"):
                 group = 'hitting' if player['type'] == 'batter' else 'pitching'
                 stats = statsapi.player_stat_data(player_id, group=group, type='season', sportId=1, season=year)
                 historical_points = 0
-                if 'stats' in stats and stats['stats']:
-                    row = stats['stats'][0]
+                if 'stats' in stats and stats['stats'] and isinstance(stats['stats'][0], dict) and 'stats' in stats['stats'][0]:
+                    stats_dict = stats['stats'][0]['stats']
+                    # Debug raw keys from nested stats
+                    st.write(f"Raw nested stats keys for {player['name']} in {year}: {list(stats_dict.keys())}")
+                    
                     mapping = batter_map if player['type'] == 'batter' else pitcher_map
                     scoring = batter_scoring if player['type'] == 'batter' else pitcher_scoring
                     
-                    # Debug: show raw row keys
-                    st.write(f"Raw stats keys for {player['name']}: {list(row.keys())}")
-                    
                     historical_points = sum(
-                        row.get(mapping.get(stat, stat), 0) * coeff 
+                        stats_dict.get(mapping.get(stat, stat), 0) * coeff 
                         for stat, coeff in scoring.items()
                     )
                     st.write(f"**Historical points calculated** for {player['name']} in {year}: {historical_points:.2f}")
                 else:
-                    st.write(f"**No historical stats found** for {player['name']} in {year}")
+                    st.write(f"**No valid historical stats found** for {player['name']} in {year}")
                     historical_points = 0
 
                 # Projections (scraping FanGraphs Steamer)
