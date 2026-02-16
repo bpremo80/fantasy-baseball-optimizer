@@ -7,12 +7,10 @@ import json
 from datetime import date, datetime
 import io
 import os
-import requests
-from bs4 import BeautifulSoup
 
 default_year = date.today().year - 1
 
-# Pre-load player names for auto-complete (2025 data or fallback)
+# Pre-load player names for auto-complete
 @st.cache_data(ttl=86400)
 def load_player_names(year):
     try:
@@ -20,7 +18,7 @@ def load_player_names(year):
         pit = pb.pitching_stats(year, qual=0)['Name'].tolist()
         return sorted(set(bat + pit))
     except:
-        return ["Aaron Judge", "Shohei Ohtani", "Paul Skenes", "Mookie Betts", "Freddie Freeman", "Riley Greene", "Tarik Skubal", "Colt Keith", "Spencer Torkelson", "Kyle Finnegan"]
+        return ["Aaron Judge", "Shohei Ohtani", "Paul Skenes", "Mookie Betts", "Freddie Freeman", "Riley Greene", "Tarik Skubal", "Colt Keith", "Spencer Torkelson", "Kyle Finnegan", "Dillon Dingler", "Juan Soto", "Kerry Carpenter", "Bobby Witt Jr.", "Julio Rodriguez", "Kenley Jansen", "Will Vest"]
 
 player_names = load_player_names(2025)
 
@@ -139,7 +137,7 @@ if st.session_state.roster:
 st.header("Step 2: Select Year & Run Optimizer")
 year = st.number_input("Season Year", 1871, date.today().year, value=default_year)
 
-if st.button("Fetch Stats, Projections & Optimize"):
+if st.button("Fetch Stats & Optimize"):
     if not st.session_state.roster:
         st.error("Build roster first.")
     else:
@@ -174,59 +172,12 @@ if st.button("Fetch Stats, Projections & Optimize"):
                         for stat, coeff in scoring.items()
                     )
 
-                # Projections: scrape FanGraphs Steamer
-                projection_points = 0.0
-                try:
-                    fg_pos = 'all' if player['type'] == 'batter' else 'pitching'
-                    search_name = player['name'].lower().replace(' ', '-').replace('.', '')
-                    fg_url = f"https://www.fangraphs.com/players/{search_name}/stats?position={fg_pos.upper()}"
-                    headers = {"User-Agent": "Mozilla/5.0"}
-                    response = requests.get(fg_url, headers=headers, timeout=10)
-                    if response.status_code == 200:
-                        soup = BeautifulSoup(response.text, 'html.parser')
-                        table = soup.find('table', class_='rgMasterTable')
-                        if table:
-                            rows = table.find_all('tr')
-                            for row in rows:
-                                if 'Steamer' in row.text:
-                                    cols = row.find_all('td')
-                                    if len(cols) > 10:
-                                        if player['type'] == 'batter':
-                                            r = float(cols[4].text.strip() or 0)
-                                            hr = float(cols[7].text.strip() or 0)
-                                            rbi = float(cols[8].text.strip() or 0)
-                                            sb = float(cols[9].text.strip() or 0)
-                                            projection_points = (
-                                                r * batter_scoring.get('R', 0) +
-                                                hr * batter_scoring.get('HR', 0) +
-                                                rbi * batter_scoring.get('RBI', 0) +
-                                                sb * batter_scoring.get('SB', 0)
-                                            )
-                                        else:
-                                            w = float(cols[6].text.strip() or 0)
-                                            sv = float(cols[8].text.strip() or 0)
-                                            ip = float(cols[4].text.strip() or 0)
-                                            so = float(cols[10].text.strip() or 0)
-                                            projection_points = (
-                                                w * pitcher_scoring.get('W', 0) +
-                                                sv * pitcher_scoring.get('SV', 0) +
-                                                ip * pitcher_scoring.get('IP', 0) +
-                                                so * pitcher_scoring.get('SO', 0)
-                                            )
-                    if projection_points > 0:
-                        st.write(f"**Projections SUCCESS** for {player['name']}: {projection_points:.2f} points")
-                    else:
-                        st.write(f"**Projections FAILED** (0 points) for {player['name']}")
-                except Exception as e:
-                    st.warning(f"Projections failed for {player['name']}: {str(e)}")
-                    projection_points = 0.0
-
-                player['points'] = historical_points + projection_points
+                player['points'] = historical_points
 
             if unmatched:
                 st.warning(f"No data for: {', '.join(unmatched)}")
 
-            # Strict optimization (no duplicate use)
+            # Strict optimization
             hitters = [p for p in roster if p['type'] == 'batter' and 'IL' not in p['positions']]
             pitchers = [p for p in roster if p['type'] == 'pitcher' and 'IL' not in p['positions']]
 
@@ -253,7 +204,7 @@ if st.button("Fetch Stats, Projections & Optimize"):
                 prob += pulp.lpSum(x[(i, s)] * p['points'] for i, s in x)
                 for s in slots:
                     prob += pulp.lpSum(x.get((i, s), 0) for i in range(len(players))) == slots[s]
-                # Strict global constraint: each player used in at most ONE slot total
+                # Strict: each player used in at most ONE slot total (prevents UTIL + position duplicate)
                 for i in range(len(players)):
                     prob += pulp.lpSum(x.get((i, s), 0) for s in slots) <= 1
                 prob.solve(pulp.PULP_CBC_CMD(msg=False))
