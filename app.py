@@ -27,7 +27,9 @@ st.markdown("""
 
 st.title("Fantasy Baseball Lineup Optimizer")
 
+# ────────────────────────────────────────────────
 # Scoring Systems
+# ────────────────────────────────────────────────
 st.header("Scoring Systems")
 with st.expander("Edit Scoring if Needed", expanded=False):
     batter_scoring_str = st.text_area(
@@ -46,21 +48,23 @@ except json.JSONDecodeError:
     st.error("Invalid scoring JSON. Fix and retry.")
     st.stop()
 
-# MLB Stats API mappings
-batter_map = {
-    'R': 'runs', '1B': 'singles', '2B': 'doubles', '3B': 'triples', 'HR': 'homeRuns',
-    'RBI': 'rbi', 'SB': 'stolenBases', 'CS': 'caughtStealing', 'BB': 'baseOnBalls',
-    'IBB': 'intentionalWalks', 'HBP': 'hitByPitch', 'SO': 'strikeOuts', 'GDP': 'groundIntoDoublePlay'
-}
+# ────────────────────────────────────────────────
+# Pre-load player names for auto-complete (using 2025 data)
+# ────────────────────────────────────────────────
+@st.cache_data(ttl=86400)  # cache 1 day
+def load_player_names(year):
+    try:
+        bat = pb.batting_stats(year, qual=0)['Name'].tolist()
+        pit = pb.pitching_stats(year, qual=0)['Name'].tolist()
+        return sorted(set(bat + pit))
+    except:
+        return ["Aaron Judge", "Shohei Ohtani", "Paul Skenes", "Mookie Betts", "Freddie Freeman"]  # fallback
 
-pitcher_map = {
-    'W': 'wins', 'L': 'losses', 'CG': 'completeGames', 'SHO': 'shutouts', 'SV': 'saves',
-    'IP': 'inningsPitched', 'H': 'hits', 'ER': 'earnedRuns', 'BB': 'baseOnBalls',
-    'IBB': 'intentionalWalks', 'HBP': 'hitByPitch', 'SO': 'strikeouts', 'WP': 'wildPitches',
-    'HLD': 'holds', 'BS': 'blownSaves'
-}
+player_names = load_player_names(2025)
 
+# ────────────────────────────────────────────────
 # Roster Management
+# ────────────────────────────────────────────────
 st.header("Step 1: Build or Upload Roster")
 
 if 'roster' not in st.session_state:
@@ -79,18 +83,28 @@ if uploaded_file:
         })
     st.success("Roster uploaded!")
 
-with st.form("Add Player"):
-    cols = st.columns(3)
+# Add Player Form with auto-complete
+with st.form("Add Player", clear_on_submit=True):
+    cols = st.columns([3, 1, 3])
     with cols[0]:
-        name = st.text_input("Player Name")
+        name = st.selectbox(
+            "Player Name (type to search)",
+            options=[""] + player_names,
+            index=0,
+            placeholder="Start typing last name..."
+        )
     with cols[1]:
         typ = st.selectbox("Type", ['batter', 'pitcher'])
     with cols[2]:
-        positions = st.multiselect("Positions", ['C', '1B', '2B', '3B', 'SS', 'OF', 'UTIL', 'SP', 'RP', 'P', 'BN', 'IL'])
-    add = st.form_submit_button("Add")
+        positions = st.multiselect(
+            "Eligible Positions",
+            options=['C', '1B', '2B', '3B', 'SS', 'OF', 'UTIL', 'SP', 'RP', 'P', 'BN', 'IL']
+        )
+    add = st.form_submit_button("Add Player")
 
 if add and name:
     st.session_state.roster.append({"name": name, "type": typ, "positions": positions})
+    st.success(f"Added {name}")
     st.rerun()
 
 st.subheader("Current Roster")
@@ -114,7 +128,9 @@ if st.session_state.roster:
     csv = df.to_csv(index=False).encode('utf-8')
     st.download_button("Download Roster CSV", csv, "roster.csv", "text/csv")
 
-# Optimizer
+# ────────────────────────────────────────────────
+# Step 2: Select Year & Run Optimizer
+# ────────────────────────────────────────────────
 st.header("Step 2: Select Year & Run Optimizer")
 year = st.number_input("Season Year", 1871, date.today().year, value=default_year)
 
@@ -147,38 +163,34 @@ if st.button("Fetch Stats, Projections & Optimize"):
                     stats_dict = stats['stats'][0]['stats']
                     mapping = batter_map if player['type'] == 'batter' else pitcher_map
                     scoring = batter_scoring if player['type'] == 'batter' else pitcher_scoring
-                    
                     historical_points = sum(
                         float(stats_dict.get(mapping.get(stat, stat), 0)) * coeff 
                         for stat, coeff in scoring.items()
                     )
-                    st.write(f"**Historical points calculated** for {player['name']} in {year}: {historical_points:.2f}")
-                else:
-                    st.write(f"**No valid historical stats found** for {player['name']} in {year}")
-                    historical_points = 0.0
 
-                # Projections: scrape FanGraphs Steamer
+                # Projections: scrape FanGraphs Steamer (improved selectors)
                 projection_points = 0.0
                 try:
                     fg_pos = 'all' if player['type'] == 'batter' else 'pitching'
                     search_name = player['name'].lower().replace(' ', '-').replace('.', '')
                     fg_url = f"https://www.fangraphs.com/players/{search_name}/stats?position={fg_pos.upper()}"
-                    headers = {"User-Agent": "Mozilla/5.0"}
-                    response = requests.get(fg_url, headers=headers, timeout=10)
+                    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                    response = requests.get(fg_url, headers=headers, timeout=12)
                     if response.status_code == 200:
                         soup = BeautifulSoup(response.text, 'html.parser')
-                        table = soup.find('table', class_='rgMasterTable')
+                        # Try multiple selectors for Steamer table
+                        table = soup.find('table', class_='rgMasterTable') or soup.find('table', id='projection-table')
                         if table:
                             rows = table.find_all('tr')
                             for row in rows:
-                                if 'Steamer' in row.text:
+                                if 'Steamer' in row.get_text():
                                     cols = row.find_all('td')
-                                    if len(cols) > 10:
+                                    if len(cols) > 12:
                                         if player['type'] == 'batter':
-                                            r = float(cols[4].text.strip() or 0)
-                                            hr = float(cols[7].text.strip() or 0)
-                                            rbi = float(cols[8].text.strip() or 0)
-                                            sb = float(cols[9].text.strip() or 0)
+                                            r = float(cols[4].get_text(strip=True) or 0)
+                                            hr = float(cols[7].get_text(strip=True) or 0)
+                                            rbi = float(cols[8].get_text(strip=True) or 0)
+                                            sb = float(cols[9].get_text(strip=True) or 0)
                                             projection_points = (
                                                 r * batter_scoring.get('R', 0) +
                                                 hr * batter_scoring.get('HR', 0) +
@@ -186,22 +198,18 @@ if st.button("Fetch Stats, Projections & Optimize"):
                                                 sb * batter_scoring.get('SB', 0)
                                             )
                                         else:
-                                            w = float(cols[6].text.strip() or 0)
-                                            sv = float(cols[8].text.strip() or 0)
-                                            ip = float(cols[4].text.strip() or 0)
-                                            so = float(cols[10].text.strip() or 0)
+                                            w = float(cols[6].get_text(strip=True) or 0)
+                                            sv = float(cols[8].get_text(strip=True) or 0)
+                                            ip = float(cols[4].get_text(strip=True) or 0)
+                                            so = float(cols[10].get_text(strip=True) or 0)
                                             projection_points = (
                                                 w * pitcher_scoring.get('W', 0) +
                                                 sv * pitcher_scoring.get('SV', 0) +
                                                 ip * pitcher_scoring.get('IP', 0) +
                                                 so * pitcher_scoring.get('SO', 0)
                                             )
-                    if projection_points > 0:
-                        st.write(f"**Projections SUCCESS** for {player['name']}: {projection_points:.2f} points")
-                    else:
-                        st.write(f"**Projections FAILED** (0 points) for {player['name']}")
                 except Exception as e:
-                    st.warning(f"Projections failed for {player['name']}: {str(e)}")
+                    st.warning(f"Projections scrape failed for {player['name']}: {str(e)}")
                     projection_points = 0.0
 
                 player['points'] = historical_points + projection_points  # blend
