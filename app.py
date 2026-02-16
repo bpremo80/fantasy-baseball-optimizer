@@ -164,13 +164,63 @@ if st.button("Fetch Stats, Projections & Optimize"):
                 else:
                     historical_points = 0
                 
-                # Projections (use pybaseball for FanGraphs Steamer projections)
-                proj_df = pb.fangraphs.steamer_hitters(year) if player['type'] == 'batter' else pb.fangraphs.steamer_pitchers(year)
-                match = proj_df[proj_df['Name'] == player['name']]
-                projection_points = 0
-                if not match.empty:
-                    row = match.iloc[0]
-                    projection_points = sum(row.get(stat, 0) * coeff for stat, coeff in scoring.items())
+               # Projections: scrape FanGraphs Steamer for this player
+projection_points = 0
+try:
+    # Build FanGraphs search URL (adjust for batter/pitcher)
+    fg_pos = 'all' if player['type'] == 'batter' else 'pitching'
+    search_name = player['name'].lower().replace(' ', '-').replace('.', '')
+    fg_url = f"https://www.fangraphs.com/players/{search_name}/stats?position={fg_pos.upper()}"
+    
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    response = requests.get(fg_url, headers=headers, timeout=10)
+    
+    if response.status_code == 200:
+        soup = BeautifulSoup(response.text, 'html.parser')
+        # Find the Steamer projection row in the dashboard table
+        dashboard = soup.find('div', id='Dashboard')
+        if dashboard:
+            rows = dashboard.find_all('tr')
+            for row in rows:
+                if 'Steamer' in row.text:
+                    cols = row.find_all('td')
+                    if len(cols) > 10:
+                        if player['type'] == 'batter':
+                            # FanGraphs batter Steamer columns (approximate indices - verify on page)
+                            pa = float(cols[2].text.strip() or 0)   # Plate Appearances
+                            r = float(cols[4].text.strip() or 0)    # Runs
+                            hr = float(cols[7].text.strip() or 0)   # HR
+                            rbi = float(cols[8].text.strip() or 0)  # RBI
+                            sb = float(cols[9].text.strip() or 0)   # SB
+                            bb = float(cols[11].text.strip() or 0)  # BB
+                            so = float(cols[12].text.strip() or 0)  # SO
+                            projection_points = (
+                                r * batter_scoring.get('R', 0) +
+                                hr * batter_scoring.get('HR', 0) +
+                                rbi * batter_scoring.get('RBI', 0) +
+                                sb * batter_scoring.get('SB', 0) +
+                                bb * batter_scoring.get('BB', 0) +
+                                so * batter_scoring.get('SO', 0)
+                                # Add more stats as needed (1B/2B/3B require calculated)
+                            )
+                        else:  # pitcher
+                            ip = float(cols[4].text.strip() or 0)
+                            w = float(cols[6].text.strip() or 0)
+                            sv = float(cols[8].text.strip() or 0)
+                            so = float(cols[10].text.strip() or 0)
+                            bb = float(cols[11].text.strip() or 0)
+                            er = float(cols[13].text.strip() or 0)
+                            projection_points = (
+                                w * pitcher_scoring.get('W', 0) +
+                                sv * pitcher_scoring.get('SV', 0) +
+                                ip * pitcher_scoring.get('IP', 0) +
+                                so * pitcher_scoring.get('SO', 0) +
+                                bb * pitcher_scoring.get('BB', 0) +
+                                er * pitcher_scoring.get('ER', 0)
+                            )
+except Exception as e:
+    st.warning(f"Projections failed for {player['name']}: {str(e)}")
+    projection_points = 0
                 
                 # Matchups (for batters only)
                 matchup_bonus = 0
