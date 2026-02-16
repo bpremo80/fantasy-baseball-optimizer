@@ -112,25 +112,34 @@ else:
         st.success(f"Added {len(roster)} players. Ready to optimize!")
     else:
         st.info("Select players above to build your roster.")
-    # ────────────────────────────────────────────────
-# MEMORY OPTIMIZATION: Filter stats safely (only existing columns)
+   # ────────────────────────────────────────────────
+# MEMORY OPTIMIZATION: Filter stats safely (only use columns that actually exist)
+# This avoids KeyError if a scoring key is missing from the data
 # ────────────────────────────────────────────────
 if roster:
     player_names = [p['name'] for p in roster]
     
-    # Get actual available columns
-    batter_avail = ['Name'] + [col for col in batter_scoring if col in batting_df.columns]
-    pitcher_avail = ['Name'] + [col for col in pitcher_scoring if col in pitching_df.columns]
+    # Safe list: only scoring keys that exist in the DataFrame
+    batter_needed = ['Name'] + [col for col in batter_scoring if col in batting_df.columns]
+    pitcher_needed = ['Name'] + [col for col in pitcher_scoring if col in pitching_df.columns]
     
-    # Filter rows first (cheaper), then columns
-    batting_df = batting_df[batting_df['Name'].isin(player_names)][batter_avail]
-    pitching_df = pitching_df[pitching_df['Name'].isin(player_names)][pitcher_avail]
+    # Warn if any requested scoring stat is missing (helpful for debugging)
+    missing_batter = [col for col in batter_scoring if col not in batting_df.columns]
+    missing_pitcher = [col for col in pitcher_scoring if col not in pitching_df.columns]
+    if missing_batter:
+        st.warning(f"These batter scoring stats not found in data (ignored): {', '.join(missing_batter)}")
+    if missing_pitcher:
+        st.warning(f"These pitcher scoring stats not found in data (ignored): {', '.join(missing_pitcher)}")
     
-    # Downcast numerics where possible
-    for col in batter_avail:
+    # Filter rows first (cheaper), then only available columns
+    batting_df = batting_df[batting_df['Name'].isin(player_names)][batter_needed]
+    pitching_df = pitching_df[pitching_df['Name'].isin(player_names)][pitcher_needed]
+    
+    # Downcast numeric columns for extra memory savings
+    for col in batter_needed:
         if col != 'Name' and pd.api.types.is_numeric_dtype(batting_df[col]):
             batting_df[col] = pd.to_numeric(batting_df[col], downcast='float')
-    for col in pitcher_avail:
+    for col in pitcher_needed:
         if col != 'Name' and pd.api.types.is_numeric_dtype(pitching_df[col]):
             pitching_df[col] = pd.to_numeric(pitching_df[col], downcast='float')
     
