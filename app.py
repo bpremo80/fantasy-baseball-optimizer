@@ -48,37 +48,16 @@ except json.JSONDecodeError:
 
 # MLB Stats API mappings
 batter_map = {
-    'R': 'runs',
-    '1B': 'singles',
-    '2B': 'doubles',
-    '3B': 'triples',
-    'HR': 'homeRuns',
-    'RBI': 'rbi',
-    'SB': 'stolenBases',
-    'CS': 'caughtStealing',
-    'BB': 'baseOnBalls',
-    'IBB': 'intentionalWalks',
-    'HBP': 'hitByPitch',
-    'SO': 'strikeOuts',
-    'GDP': 'groundIntoDoublePlay'
+    'R': 'runs', '1B': 'singles', '2B': 'doubles', '3B': 'triples', 'HR': 'homeRuns',
+    'RBI': 'rbi', 'SB': 'stolenBases', 'CS': 'caughtStealing', 'BB': 'baseOnBalls',
+    'IBB': 'intentionalWalks', 'HBP': 'hitByPitch', 'SO': 'strikeOuts', 'GDP': 'groundIntoDoublePlay'
 }
 
 pitcher_map = {
-    'W': 'wins',
-    'L': 'losses',
-    'CG': 'completeGames',
-    'SHO': 'shutouts',
-    'SV': 'saves',
-    'IP': 'inningsPitched',
-    'H': 'hits',
-    'ER': 'earnedRuns',
-    'BB': 'baseOnBalls',
-    'IBB': 'intentionalWalks',
-    'HBP': 'hitByPitch',
-    'SO': 'strikeouts',
-    'WP': 'wildPitches',
-    'HLD': 'holds',
-    'BS': 'blownSaves'
+    'W': 'wins', 'L': 'losses', 'CG': 'completeGames', 'SHO': 'shutouts', 'SV': 'saves',
+    'IP': 'inningsPitched', 'H': 'hits', 'ER': 'earnedRuns', 'BB': 'baseOnBalls',
+    'IBB': 'intentionalWalks', 'HBP': 'hitByPitch', 'SO': 'strikeouts', 'WP': 'wildPitches',
+    'HLD': 'holds', 'BS': 'blownSaves'
 }
 
 # Roster Management
@@ -166,9 +145,6 @@ if st.button("Fetch Stats, Projections & Optimize"):
                 historical_points = 0.0
                 if 'stats' in stats and stats['stats'] and isinstance(stats['stats'][0], dict) and 'stats' in stats['stats'][0]:
                     stats_dict = stats['stats'][0]['stats']
-                    # Debug raw keys
-                    st.write(f"Raw nested stats keys for {player['name']} in {year}: {list(stats_dict.keys())}")
-                    
                     mapping = batter_map if player['type'] == 'batter' else pitcher_map
                     scoring = batter_scoring if player['type'] == 'batter' else pitcher_scoring
                     
@@ -181,8 +157,8 @@ if st.button("Fetch Stats, Projections & Optimize"):
                     st.write(f"**No valid historical stats found** for {player['name']} in {year}")
                     historical_points = 0.0
 
-                # Projections (scraping FanGraphs Steamer)
-                projection_points = 0
+                # Projections: scrape FanGraphs Steamer
+                projection_points = 0.0
                 try:
                     fg_pos = 'all' if player['type'] == 'batter' else 'pitching'
                     search_name = player['name'].lower().replace(' ', '-').replace('.', '')
@@ -191,9 +167,9 @@ if st.button("Fetch Stats, Projections & Optimize"):
                     response = requests.get(fg_url, headers=headers, timeout=10)
                     if response.status_code == 200:
                         soup = BeautifulSoup(response.text, 'html.parser')
-                        dashboard = soup.find('div', id='Dashboard')
-                        if dashboard:
-                            rows = dashboard.find_all('tr')
+                        table = soup.find('table', class_='rgMasterTable')
+                        if table:
+                            rows = table.find_all('tr')
                             for row in rows:
                                 if 'Steamer' in row.text:
                                     cols = row.find_all('td')
@@ -226,44 +202,9 @@ if st.button("Fetch Stats, Projections & Optimize"):
                         st.write(f"**Projections FAILED** (0 points) for {player['name']}")
                 except Exception as e:
                     st.warning(f"Projections failed for {player['name']}: {str(e)}")
-                    st.write(f"**Projections FAILED** (0 points) for {player['name']}")
+                    projection_points = 0.0
 
-                # Matchup bonus
-                matchup_bonus = 0
-                if player['type'] == 'batter':
-                    team_id = search[0].get('currentTeam', {}).get('id')
-                    if team_id:
-                        schedule = statsapi.schedule(date=datetime.now().strftime('%Y-%m-%d'), team=team_id)
-                        if schedule:
-                            game = schedule[0]
-                            opp_pitcher_id = game.get('away_pitcher') if game['home_id'] == team_id else game.get('home_pitcher')
-                            if opp_pitcher_id:
-                                opp_stats = statsapi.player_stat_data(opp_pitcher_id, group='pitching', type='season')
-                                if 'stats' in opp_stats and opp_stats['stats']:
-                                    opp_row = opp_stats['stats'][0]
-                                    opp_era = float(opp_row.get('era', 0))
-                                    if opp_era > 4:
-                                        matchup_bonus = 0.1 * projection_points
-                                    elif opp_era < 3:
-                                        matchup_bonus = -0.1 * projection_points
-
-                # Hot streak / bad luck
-                advanced_bonus = 0
-                if player['type'] == 'batter':
-                    try:
-                        advanced = pb.statcast_batter(year, year, player_id)
-                        if not advanced.empty:
-                            recent_babip = advanced['babip'].mean()
-                            woba = advanced['woba'].mean()
-                            xwoba = advanced['xwoba'].mean()
-                            if woba > xwoba + 0.03:
-                                advanced_bonus = 0.1 * projection_points
-                            elif woba < xwoba - 0.03:
-                                advanced_bonus = 0.15 * projection_points
-                    except:
-                        pass
-
-                player['points'] = historical_points + projection_points + matchup_bonus + advanced_bonus
+                player['points'] = historical_points + projection_points  # blend
 
             if unmatched:
                 st.warning(f"No data for: {', '.join(unmatched)}")
@@ -345,7 +286,7 @@ if st.button("Fetch Stats, Projections & Optimize"):
             if unused:
                 st.info(f"Unused: {', '.join(f'{p['name']} ({p['points']:.2f})' for p in unused)}")
 
-# Reset
+# Reset Roster
 if st.button("Reset Roster"):
     st.session_state.roster = []
     st.rerun()
