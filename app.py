@@ -103,7 +103,30 @@ else:
         st.success(f"Added {len(roster)} players. Ready to optimize!")
     else:
         st.info("Select players above to build your roster.")
-
+    # ────────────────────────────────────────────────
+    # MEMORY OPTIMIZATION: Filter stats to only selected players & needed columns
+    # This prevents loading the full huge leaderboards in memory
+    # ────────────────────────────────────────────────
+    if roster:
+        player_names = [p['name'] for p in roster]
+        
+        # Only keep columns we actually use in scoring + Name for matching
+        batter_needed = ['Name'] + list(batter_scoring.keys())
+        pitcher_needed = ['Name'] + list(pitcher_scoring.keys())
+        
+        # Filter rows and columns
+        batting_df = batting_df[batting_df['Name'].isin(player_names)][batter_needed]
+        pitching_df = pitching_df[pitching_df['Name'].isin(player_names)][pitcher_needed]
+        
+        # Downcast numeric columns to save additional memory
+        for col in batter_needed:
+            if col != 'Name' and pd.api.types.is_numeric_dtype(batting_df[col]):
+                batting_df[col] = pd.to_numeric(batting_df[col], downcast='float')
+        for col in pitcher_needed:
+            if col != 'Name' and pd.api.types.is_numeric_dtype(pitching_df[col]):
+                pitching_df[col] = pd.to_numeric(pitching_df[col], downcast='float')
+        
+        st.info(f"Filtered stats to only your {len(player_names)} players (memory optimized).")
 # ────────────────────────────────────────────────
 # Rest of your original code (points calculation + optimization)
 # ────────────────────────────────────────────────
