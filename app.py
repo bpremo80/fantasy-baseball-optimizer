@@ -168,8 +168,15 @@ if st.button("Fetch Stats, Projections & Optimize"):
                     row = stats['stats'][0]
                     mapping = batter_map if player['type'] == 'batter' else pitcher_map
                     scoring = batter_scoring if player['type'] == 'batter' else pitcher_scoring
-                    historical_points = sum(row.get(mapping.get(stat, stat), 0) * coeff for stat, coeff in scoring.items())
-                    st.write(f"**Historical stats FOUND** for {player['name']} in {year}: {historical_points} points (raw data: {row})")
+                    
+                    # Debug: show raw row keys
+                    st.write(f"Raw stats keys for {player['name']}: {list(row.keys())}")
+                    
+                    historical_points = sum(
+                        row.get(mapping.get(stat, stat), 0) * coeff 
+                        for stat, coeff in scoring.items()
+                    )
+                    st.write(f"**Historical points calculated** for {player['name']} in {year}: {historical_points:.2f}")
                 else:
                     st.write(f"**No historical stats found** for {player['name']} in {year}")
                     historical_points = 0
