@@ -164,7 +164,7 @@ if st.button("Fetch Stats, Projections & Optimize"):
                 else:
                     historical_points = 0
                 
-               # Projections: scrape FanGraphs Steamer for this player
+# Projections: scrape FanGraphs Steamer for this player
 projection_points = 0
 try:
     # Build FanGraphs search URL (adjust for batter/pitcher)
