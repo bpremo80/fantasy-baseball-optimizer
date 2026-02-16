@@ -68,6 +68,9 @@ players_df = get_all_players(year)
 st.header("Build Your Roster")
 st.info("Type to search players (e.g., 'Judge', 'Ohtani', 'Skenes'). Select all players on your roster (starters + bench + IL).")
 
+# Always define roster (even if empty)
+roster = []
+
 if players_df.empty:
     st.warning("No players loaded for this year. Try a different season or check internet connection.")
 else:
@@ -76,10 +79,9 @@ else:
         options=players_df['Display'].tolist(),
         default=[],
         placeholder="Start typing a name...",
-        max_selections=40  # adjust if your league has very large rosters
+        max_selections=40
     )
 
-    roster = []
     for disp in selected_displays:
         row = players_df[players_df['Display'] == disp].iloc[0]
         name = row['Name']
@@ -102,7 +104,7 @@ else:
             "positions": positions
         })
 
-    if roster:
+    if selected_displays:
         st.success(f"Added {len(roster)} players. Ready to optimize!")
     else:
         st.info("Select players above to build your roster.")
