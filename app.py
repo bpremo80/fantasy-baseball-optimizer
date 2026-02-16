@@ -19,12 +19,14 @@ st.success("Stats loaded!")
 
 # Input scoring systems as JSON
 st.header("Enter Scoring Systems")
+
 batter_scoring_str = st.text_area(
-    "Batter scoring (JSON dict, e.g. {'HR': 4, 'R': 1, 'RBI': 1, 'SB': 2, 'H': 1})",
+    "Batter scoring (JSON dict)",
     value='{"R": 1, "1B": 1, "2B": 2, "3B": 3, "HR": 4, "RBI": 1, "SB": 2, "CS": -1, "BB": 1, "IBB": 1, "HBP": 1, "K": -1, "GIDP": -1, "E": -1}'
 )
+
 pitcher_scoring_str = st.text_area(
-    "Pitcher scoring (JSON dict, e.g. {'W': 10, 'L': -5, ...})",
+    "Pitcher scoring (JSON dict)",
     value='{"W": 10, "L": -5, "CG": 10, "SHO": 5, "SV": 10, "IP": 3, "H": -1, "ER": -1, "BB": -1, "IBB": -1, "HBP": -1.3, "K": 1, "WP": -1, "HLD": 7, "BS": -5}'
 )
 
