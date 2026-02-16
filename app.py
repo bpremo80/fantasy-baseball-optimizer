@@ -223,7 +223,7 @@ except Exception as e:
     projection_points = 0
                 
                 # Matchups (for batters only)
-                matchup_bonus = 0
+    matchup_bonus = 0
                 if player['type'] == 'batter':
                     # Get scheduled game for player's team
                     team_id = search[0].get('currentTeam', {}).get('id')
