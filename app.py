@@ -95,7 +95,7 @@ with st.form("Add Player"):
 
 if add and name:
     st.session_state.roster.append({"name": name, "type": typ, "positions": positions})
-    st.experimental_rerun()
+    st.rerun()
 
 # Display & Edit Roster
 for i, p in enumerate(st.session_state.roster):
@@ -109,7 +109,7 @@ for i, p in enumerate(st.session_state.roster):
     with cols[3]:
         if st.button("Remove", key=f"rem_{i}"):
             del st.session_state.roster[i]
-            st.experimental_rerun()
+            st.rerun()
 
 # CSV Export
 if st.session_state.roster:
