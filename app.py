@@ -12,19 +12,20 @@ from bs4 import BeautifulSoup
 
 default_year = date.today().year - 1
 
-# MLB Stats API mappings (moved here so they are defined early)
-batter_map = {
-    'R': 'runs', '1B': 'singles', '2B': 'doubles', '3B': 'triples', 'HR': 'homeRuns',
-    'RBI': 'rbi', 'SB': 'stolenBases', 'CS': 'caughtStealing', 'BB': 'baseOnBalls',
-    'IBB': 'intentionalWalks', 'HBP': 'hitByPitch', 'SO': 'strikeOuts', 'GDP': 'groundIntoDoublePlay'
-}
+# Pre-load player names for auto-complete (2025 data or fallback)
+@st.cache_data(ttl=86400)
+def load_player_names(year):
+    try:
+        bat = pb.batting_stats(year, qual=0)['Name'].tolist()
+        pit = pb.pitching_stats(year, qual=0)['Name'].tolist()
+        return sorted(set(bat + pit))
+    except:
+        return [
+            "Aaron Judge", "Shohei Ohtani", "Paul Skenes", "Mookie Betts", "Freddie Freeman",
+            "Riley Greene", "Tarik Skubal", "Colt Keith", "Spencer Torkelson", "Kyle Finnegan"
+        ]  # fallback list
 
-pitcher_map = {
-    'W': 'wins', 'L': 'losses', 'CG': 'completeGames', 'SHO': 'shutouts', 'SV': 'saves',
-    'IP': 'inningsPitched', 'H': 'hits', 'ER': 'earnedRuns', 'BB': 'baseOnBalls',
-    'IBB': 'intentionalWalks', 'HBP': 'hitByPitch', 'SO': 'strikeouts', 'WP': 'wildPitches',
-    'HLD': 'holds', 'BS': 'blownSaves'
-}
+player_names = load_player_names(2025)
 
 # Mobile-friendly config
 st.set_page_config(layout="wide", page_title="Fantasy Baseball Optimizer")
@@ -60,6 +61,20 @@ except json.JSONDecodeError:
     st.error("Invalid scoring JSON. Fix and retry.")
     st.stop()
 
+# MLB Stats API mappings
+batter_map = {
+    'R': 'runs', '1B': 'singles', '2B': 'doubles', '3B': 'triples', 'HR': 'homeRuns',
+    'RBI': 'rbi', 'SB': 'stolenBases', 'CS': 'caughtStealing', 'BB': 'baseOnBalls',
+    'IBB': 'intentionalWalks', 'HBP': 'hitByPitch', 'SO': 'strikeOuts', 'GDP': 'groundIntoDoublePlay'
+}
+
+pitcher_map = {
+    'W': 'wins', 'L': 'losses', 'CG': 'completeGames', 'SHO': 'shutouts', 'SV': 'saves',
+    'IP': 'inningsPitched', 'H': 'hits', 'ER': 'earnedRuns', 'BB': 'baseOnBalls',
+    'IBB': 'intentionalWalks', 'HBP': 'hitByPitch', 'SO': 'strikeouts', 'WP': 'wildPitches',
+    'HLD': 'holds', 'BS': 'blownSaves'
+}
+
 # Roster Management
 st.header("Step 1: Build or Upload Roster")
 
@@ -82,15 +97,24 @@ if uploaded_file:
 with st.form("Add Player", clear_on_submit=True):
     cols = st.columns(3)
     with cols[0]:
-        name = st.text_input("Player Name")
+        name = st.selectbox(
+            "Player Name (type to search)",
+            options=[""] + player_names,
+            index=0,
+            placeholder="Start typing last name..."
+        )
     with cols[1]:
         typ = st.selectbox("Type", ['batter', 'pitcher'])
     with cols[2]:
-        positions = st.multiselect("Positions", ['C', '1B', '2B', '3B', 'SS', 'OF', 'UTIL', 'SP', 'RP', 'P', 'BN', 'IL'])
+        positions = st.multiselect(
+            "Eligible Positions",
+            options=['C', '1B', '2B', '3B', 'SS', 'OF', 'UTIL', 'SP', 'RP', 'P', 'BN', 'IL']
+        )
     add = st.form_submit_button("Add")
 
 if add and name:
     st.session_state.roster.append({"name": name, "type": typ, "positions": positions})
+    st.success(f"Added {name}")
     st.rerun()
 
 st.subheader("Current Roster")
@@ -152,8 +176,6 @@ if st.button("Fetch Stats, Projections & Optimize"):
                         float(stats_dict.get(mapping.get(stat, stat), 0)) * coeff 
                         for stat, coeff in scoring.items()
                     )
-                else:
-                    historical_points = 0.0
 
                 # Projections: scrape FanGraphs Steamer
                 projection_points = 0.0
