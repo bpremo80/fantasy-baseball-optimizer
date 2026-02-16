@@ -144,11 +144,14 @@ if st.button("Fetch Stats, Projections & Optimize"):
                 stats = statsapi.player_stat_data(player_id, group=group, type='season', sportId=1)
                 historical_points = 0
                 if 'stats' in stats and stats['stats']:
+                    st.write(f"**Historical stats FOUND** for {player['name']} in {year}: {stats['stats'][0]}")
                     row = stats['stats'][0]
                     mapping = batter_map if player['type'] == 'batter' else pitcher_map
                     scoring = batter_scoring if player['type'] == 'batter' else pitcher_scoring
                     historical_points = sum(row.get(mapping.get(stat, ''), 0) * coeff for stat, coeff in scoring.items())
-
+                else:
+                    st.write(f"**No historical stats found** for {player['name']} in {year}")
+                    historical_points = 0
                 # Projections (scraping FanGraphs Steamer)
                 projection_points = 0
                 try:
@@ -190,6 +193,10 @@ if st.button("Fetch Stats, Projections & Optimize"):
                                             )
                 except Exception as e:
                     st.warning(f"Projections failed for {player['name']}: {str(e)}")
+                if projection_points > 0:
+                    st.write(f"**Projections SUCCESS** for {player['name']}: {projection_points:.2f} points")
+                else:
+                    st.write(f"**Projections FAILED** (0 points) for {player['name']}")
 
                 # Matchup bonus (batters only)
                 matchup_bonus = 0
