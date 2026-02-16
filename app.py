@@ -48,16 +48,37 @@ except json.JSONDecodeError:
 
 # MLB Stats API mappings
 batter_map = {
-    'R': 'runs', '1B': 'singles', '2B': 'doubles', '3B': 'triples', 'HR': 'homeRuns',
-    'RBI': 'rbi', 'SB': 'stolenBases', 'CS': 'caughtStealing', 'BB': 'baseOnBalls',
-    'IBB': 'intentionalWalks', 'HBP': 'hitByPitch', 'SO': 'strikeOuts', 'GDP': 'groundIntoDoublePlay'
+    'R': 'runs',
+    '1B': 'singles',
+    '2B': 'doubles',
+    '3B': 'triples',
+    'HR': 'homeRuns',
+    'RBI': 'rbi',
+    'SB': 'stolenBases',
+    'CS': 'caughtStealing',
+    'BB': 'baseOnBalls',
+    'IBB': 'intentionalWalks',
+    'HBP': 'hitByPitch',
+    'SO': 'strikeOuts',
+    'GDP': 'groundIntoDoublePlay'
 }
 
 pitcher_map = {
-    'W': 'wins', 'L': 'losses', 'CG': 'completeGames', 'SHO': 'shutouts', 'SV': 'saves',
-    'IP': 'inningsPitched', 'H': 'hits', 'ER': 'earnedRuns', 'BB': 'baseOnBalls',
-    'IBB': 'intentionalWalks', 'HBP': 'hitByPitch', 'SO': 'strikeouts', 'WP': 'wildPitches',
-    'HLD': 'holds', 'BS': 'blownSaves'
+    'W': 'wins',
+    'L': 'losses',
+    'CG': 'completeGames',
+    'SHO': 'shutouts',
+    'SV': 'saves',
+    'IP': 'inningsPitched',
+    'H': 'hits',
+    'ER': 'earnedRuns',
+    'BB': 'baseOnBalls',
+    'IBB': 'intentionalWalks',
+    'HBP': 'hitByPitch',
+    'SO': 'strikeouts',
+    'WP': 'wildPitches',
+    'HLD': 'holds',
+    'BS': 'blownSaves'
 }
 
 # Roster Management
@@ -147,8 +168,8 @@ if st.button("Fetch Stats, Projections & Optimize"):
                     row = stats['stats'][0]
                     mapping = batter_map if player['type'] == 'batter' else pitcher_map
                     scoring = batter_scoring if player['type'] == 'batter' else pitcher_scoring
-                    historical_points = sum(row.get(mapping.get(stat, ''), 0) * coeff for stat, coeff in scoring.items())
-                    st.write(f"**Historical stats FOUND** for {player['name']} in {year}: {historical_points} points")
+                    historical_points = sum(row.get(mapping.get(stat, stat), 0) * coeff for stat, coeff in scoring.items())
+                    st.write(f"**Historical stats FOUND** for {player['name']} in {year}: {historical_points} points (raw data: {row})")
                 else:
                     st.write(f"**No historical stats found** for {player['name']} in {year}")
                     historical_points = 0
