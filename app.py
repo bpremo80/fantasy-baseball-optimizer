@@ -2,6 +2,7 @@ import streamlit as st
 import pybaseball as pb
 import pandas as pd
 import pulp
+import json
 from datetime import date
 
 st.title("Fantasy Baseball Lineup Optimizer")
