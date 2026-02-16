@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 
 default_year = date.today().year - 1
 
-# Pre-load player names for auto-complete (2025 data or fallback)
+# Pre-load player names for auto-complete
 @st.cache_data(ttl=86400)
 def load_player_names(year):
     try:
@@ -20,10 +20,7 @@ def load_player_names(year):
         pit = pb.pitching_stats(year, qual=0)['Name'].tolist()
         return sorted(set(bat + pit))
     except:
-        return [
-            "Aaron Judge", "Shohei Ohtani", "Paul Skenes", "Mookie Betts", "Freddie Freeman",
-            "Riley Greene", "Tarik Skubal", "Colt Keith", "Spencer Torkelson", "Kyle Finnegan"
-        ]  # fallback list
+        return ["Aaron Judge", "Shohei Ohtani", "Paul Skenes", "Mookie Betts", "Freddie Freeman", "Riley Greene", "Tarik Skubal", "Colt Keith", "Spencer Torkelson", "Kyle Finnegan"]
 
 player_names = load_player_names(2025)
 
@@ -216,6 +213,10 @@ if st.button("Fetch Stats, Projections & Optimize"):
                                                 ip * pitcher_scoring.get('IP', 0) +
                                                 so * pitcher_scoring.get('SO', 0)
                                             )
+                    if projection_points > 0:
+                        st.write(f"**Projections SUCCESS** for {player['name']}: {projection_points:.2f} points")
+                    else:
+                        st.write(f"**Projections FAILED** (0 points) for {player['name']}")
                 except Exception as e:
                     st.warning(f"Projections failed for {player['name']}: {str(e)}")
                     projection_points = 0.0
@@ -225,7 +226,7 @@ if st.button("Fetch Stats, Projections & Optimize"):
             if unmatched:
                 st.warning(f"No data for: {', '.join(unmatched)}")
 
-            # Optimization
+            # Strict optimization (no duplicate use)
             hitters = [p for p in roster if p['type'] == 'batter' and 'IL' not in p['positions']]
             pitchers = [p for p in roster if p['type'] == 'pitcher' and 'IL' not in p['positions']]
 
@@ -252,6 +253,7 @@ if st.button("Fetch Stats, Projections & Optimize"):
                 prob += pulp.lpSum(x[(i, s)] * p['points'] for i, s in x)
                 for s in slots:
                     prob += pulp.lpSum(x.get((i, s), 0) for i in range(len(players))) == slots[s]
+                # Strict: each player used in at most ONE slot total
                 for i in range(len(players)):
                     prob += pulp.lpSum(x.get((i, s), 0) for s in slots) <= 1
                 prob.solve(pulp.PULP_CBC_CMD(msg=False))
