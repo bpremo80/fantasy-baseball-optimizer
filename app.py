@@ -47,22 +47,26 @@ def get_all_players(year):
         batting = pb.batting_stats(year, qual=0)
         pitching = pb.pitching_stats(year, qual=0)
         
-        batters = batting[['Name', 'Team', 'Pos']].copy()
+        # Use only available columns: Name, Team (Pos is not present)
+        batters = batting[['Name', 'Team']].copy()
         batters['Type'] = 'batter'
-        batters = batters.rename(columns={'Pos': 'Primary_Pos'})
+        batters['Primary_Pos'] = 'Unknown'  # Fallback since no Pos column
         
-        pitchers = pitching[['Name', 'Team', 'Pos']].copy()
+        pitchers = pitching[['Name', 'Team']].copy()
         pitchers['Type'] = 'pitcher'
-        pitchers = pitchers.rename(columns={'Pos': 'Primary_Pos'})
+        pitchers['Primary_Pos'] = 'Unknown'
         
         all_players = pd.concat([batters, pitchers], ignore_index=True)
-        all_players['Display'] = all_players['Name'] + " (" + all_players['Type'].str[0].str.upper() + ", " + all_players['Team'].fillna('FA') + ")"
+        all_players['Display'] = (
+            all_players['Name'] + " (" +
+            all_players['Type'].str[0].str.upper() + ", " +
+            all_players['Team'].fillna('FA') + ")"
+        )
         all_players = all_players.sort_values('Name').drop_duplicates('Name')
         return all_players
     except Exception as e:
-        st.error(f"Error loading players: {e}")
+        st.error(f"Error loading players: {str(e)}")
         return pd.DataFrame()
-
 players_df = get_all_players(year)
 
 st.header("Build Your Roster")
