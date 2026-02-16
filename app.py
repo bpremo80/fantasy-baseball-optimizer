@@ -22,7 +22,7 @@ st.header("Enter Scoring Systems")
 
 batter_scoring_str = st.text_area(
     "Batter scoring (JSON dict)",
-    value='{"R": 1, "1B": 1, "2B": 2, "3B": 3, "HR": 4, "RBI": 1, "SB": 2, "CS": -1, "BB": 1, "IBB": 1, "HBP": 1, "K": -1, "GIDP": -1, "E": -1}'
+    value='{"R": 1, "1B": 1, "2B": 2, "3B": 3, "HR": 4, "RBI": 1, "SB": 2, "CS": -1, "BB": 1, "IBB": 1, "HBP": 1, "SO": -1, "GDP": -1}'
 )
 
 pitcher_scoring_str = st.text_area(
