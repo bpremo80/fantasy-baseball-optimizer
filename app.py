@@ -7,7 +7,7 @@ import json
 from datetime import date, datetime
 import io
 import os
-
+default_year = date.today().year - 1
 # ────────────────────────────────────────────────
 # App Config (Mobile-Friendly)
 # ────────────────────────────────────────────────
