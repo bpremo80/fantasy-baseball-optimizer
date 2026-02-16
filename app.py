@@ -13,7 +13,7 @@ year = st.number_input("Select season year for stats", min_value=1871, max_value
 
 # Fetch stats (cached by pybaseball)
 with st.spinner("Fetching batting and pitching stats from FanGraphs..."):
-    batting_df = pb.batting_stats(year, qual=0)  # qual=0 to include all players
+    batting_df = pb.batting_stats(year, qual=0)
     pitching_df = pb.pitching_stats(year, qual=0)
 st.success("Stats loaded!")
 
@@ -21,65 +21,58 @@ st.success("Stats loaded!")
 st.header("Enter Scoring Systems")
 
 batter_scoring_str = st.text_area(
-    "Batter scoring (JSON dict)",
+    "Batter scoring (JSON dict) – uses FanGraphs names (SO = strikeouts, GDP = GIDP)",
     value='{"R": 1, "1B": 1, "2B": 2, "3B": 3, "HR": 4, "RBI": 1, "SB": 2, "CS": -1, "BB": 1, "IBB": 1, "HBP": 1, "SO": -1, "GDP": -1}'
 )
 
 pitcher_scoring_str = st.text_area(
-    "Pitcher scoring (JSON dict)",
-    value='{"W": 10, "L": -5, "CG": 10, "SHO": 5, "SV": 10, "IP": 3, "H": -1, "ER": -1, "BB": -1, "IBB": -1, "HBP": -1.3, "K": 1, "WP": -1, "HLD": 7, "BS": -5}'
+    "Pitcher scoring (JSON dict) – uses FanGraphs names (SO = strikeouts, BS = blown saves)",
+    value='{"W": 10, "L": -5, "CG": 10, "SHO": 5, "SV": 10, "IP": 3, "H": -1, "ER": -1, "BB": -1, "IBB": -1, "HBP": -1.3, "SO": 1, "WP": -1, "HLD": 7, "BS": -5}'
 )
 
 try:
     batter_scoring = json.loads(batter_scoring_str)
     pitcher_scoring = json.loads(pitcher_scoring_str)
 except json.JSONDecodeError:
-    st.error("Invalid JSON for scoring. Please fix and try again.")
+    st.error("Invalid JSON for scoring. Please check formatting and try again.")
     st.stop()
 
 # ────────────────────────────────────────────────
-# NEW: Searchable player selector (replaces JSON roster input)
+# Searchable player selector
 # ────────────────────────────────────────────────
 
-@st.cache_data(ttl=3600)  # cache 1 hour
+@st.cache_data(ttl=3600)
 def get_all_players(year):
     try:
         batting = pb.batting_stats(year, qual=0)
         pitching = pb.pitching_stats(year, qual=0)
         
-        # Use only available columns: Name, Team (Pos is not present)
         batters = batting[['Name', 'Team']].copy()
         batters['Type'] = 'batter'
-        batters['Primary_Pos'] = 'Unknown'  # Fallback since no Pos column
         
         pitchers = pitching[['Name', 'Team']].copy()
         pitchers['Type'] = 'pitcher'
-        pitchers['Primary_Pos'] = 'Unknown'
         
         all_players = pd.concat([batters, pitchers], ignore_index=True)
-        all_players['Display'] = (
-            all_players['Name'] + " (" +
-            all_players['Type'].str[0].str.upper() + ", " +
-            all_players['Team'].fillna('FA') + ")"
-        )
+        all_players['Display'] = all_players['Name'] + " (" + all_players['Type'].str[0].str.upper() + ", " + all_players['Team'].fillna('FA') + ")"
         all_players = all_players.sort_values('Name').drop_duplicates('Name')
         return all_players
     except Exception as e:
         st.error(f"Error loading players: {str(e)}")
         return pd.DataFrame()
+
 players_df = get_all_players(year)
 
 st.header("Build Your Roster")
-st.info("Type to search players (e.g., 'Judge', 'Ohtani', 'Skenes'). Select all players on your roster (starters + bench + IL).")
+st.info("Type to search (e.g. 'Judge', 'Skenes'). Select your full roster (starters, bench, IL).")
 
-# Always define roster (even if empty)
-roster = []
+roster = []  # Always define it here
 
 if players_df.empty:
-    st.warning("No players loaded for this year. Try a different season or check internet connection.")
+    st.warning("No players loaded. Try a different year or check connection.")
 else:
     selected_displays = st.multiselect(
-        "Search & add players to your roster",
+        "Search & add players",
         options=players_df['Display'].tolist(),
         default=[],
         placeholder="Start typing a name...",
@@ -90,87 +83,44 @@ else:
         row = players_df[players_df['Display'] == disp].iloc[0]
         name = row['Name']
         typ = row['Type']
-        primary = row['Primary_Pos'] if pd.notna(row['Primary_Pos']) else ""
         
-        positions = []
-        if typ == 'batter':
-            if 'OF' in str(primary).upper(): positions = ['OF', 'UTIL']
-            elif primary in ['C', '1B', '2B', '3B', 'SS']: positions = [primary, 'UTIL']
-            else: positions = ['UTIL']
-        else:  # pitcher
-            if 'SP' in str(primary).upper(): positions = ['SP', 'P']
-            elif 'RP' in str(primary).upper(): positions = ['RP', 'P']
-            else: positions = ['P']
+        # Basic position fallback (since no Pos column)
+        positions = ['UTIL'] if typ == 'batter' else ['P']
+        if typ == 'pitcher':
+            if 'SP' in name.upper(): positions = ['SP', 'P']  # rough guess
+            elif 'RP' in name.upper(): positions = ['RP', 'P']
         
-        roster.append({
-            "name": name,
-            "type": typ,
-            "positions": positions
-        })
+        roster.append({"name": name, "type": typ, "positions": positions})
 
     if selected_displays:
-        st.success(f"Added {len(roster)} players. Ready to optimize!")
+        st.success(f"Added {len(roster)} players. Ready!")
     else:
-        st.info("Select players above to build your roster.")
-   # ────────────────────────────────────────────────
-# MEMORY OPTIMIZATION: Filter stats safely (only use columns that actually exist)
-# This avoids KeyError if a scoring key is missing from the data
+        st.info("Select players to build roster.")
+
+# ────────────────────────────────────────────────
+# Safe memory optimization
 # ────────────────────────────────────────────────
 if roster:
     player_names = [p['name'] for p in roster]
     
-    # Safe list: only scoring keys that exist in the DataFrame
-    batter_needed = ['Name'] + [col for col in batter_scoring if col in batting_df.columns]
-    pitcher_needed = ['Name'] + [col for col in pitcher_scoring if col in pitching_df.columns]
+    batter_needed = ['Name'] + [k for k in batter_scoring if k in batting_df.columns]
+    pitcher_needed = ['Name'] + [k for k in pitcher_scoring if k in pitching_df.columns]
     
-    # Warn if any requested scoring stat is missing (helpful for debugging)
-    missing_batter = [col for col in batter_scoring if col not in batting_df.columns]
-    missing_pitcher = [col for col in pitcher_scoring if col not in pitching_df.columns]
-    if missing_batter:
-        st.warning(f"These batter scoring stats not found in data (ignored): {', '.join(missing_batter)}")
-    if missing_pitcher:
-        st.warning(f"These pitcher scoring stats not found in data (ignored): {', '.join(missing_pitcher)}")
+    missing_b = [k for k in batter_scoring if k not in batting_df.columns]
+    missing_p = [k for k in pitcher_scoring if k not in pitching_df.columns]
+    if missing_b:
+        st.warning(f"Batter stats ignored (missing): {', '.join(missing_b)}")
+    if missing_p:
+        st.warning(f"Pitcher stats ignored (missing): {', '.join(missing_p)}")
     
-    # Filter rows first (cheaper), then only available columns
     batting_df = batting_df[batting_df['Name'].isin(player_names)][batter_needed]
     pitching_df = pitching_df[pitching_df['Name'].isin(player_names)][pitcher_needed]
     
-    # Downcast numeric columns for extra memory savings
-    for col in batter_needed:
-        if col != 'Name' and pd.api.types.is_numeric_dtype(batting_df[col]):
-            batting_df[col] = pd.to_numeric(batting_df[col], downcast='float')
-    for col in pitcher_needed:
-        if col != 'Name' and pd.api.types.is_numeric_dtype(pitching_df[col]):
-            pitching_df[col] = pd.to_numeric(pitching_df[col], downcast='float')
-    
-    st.info(f"Filtered stats to your {len(player_names)} players using only available columns (memory optimized).")
+    st.info(f"Filtered to your {len(player_names)} players (memory saved).")
+
 # ────────────────────────────────────────────────
-# Rest of your original code (points calculation + optimization)
+# Calculate points
 # ────────────────────────────────────────────────
-
-# Hardcoded standard lineup slots and eligibility (you can customize)
-hitter_slots = {'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'CI': 1, 'MI': 1, 'OF': 5, 'UTIL': 1}
-pitcher_slots = {'SP': 2, 'RP': 2, 'P': 5}
-
-hitter_eligible = {
-    'C': ['C'],
-    '1B': ['1B'],
-    '2B': ['2B'],
-    '3B': ['3B'],
-    'SS': ['SS'],
-    'CI': ['1B', '3B'],
-    'MI': ['2B', 'SS'],
-    'OF': ['OF'],
-    'UTIL': ['C', '1B', '2B', '3B', 'SS', 'OF']
-}
-
-pitcher_eligible = {
-    'SP': ['SP'],
-    'RP': ['RP'],
-    'P': ['SP', 'RP']
-}
-
-# Calculate points for each player
 hitters = [p for p in roster if p['type'] == 'batter']
 pitchers = [p for p in roster if p['type'] == 'pitcher']
 
@@ -182,7 +132,7 @@ for player in hitters:
         player['points'] = 0
     else:
         row = match.iloc[0]
-        player['points'] = sum(row.get(stat, 0) * coeff for stat, coeff in batter_scoring.items() if stat in row)
+        player['points'] = sum(row.get(stat, 0) * coeff for stat, coeff in batter_scoring.items())
 
 for player in pitchers:
     match = pitching_df[pitching_df['Name'] == player['name']]
@@ -191,53 +141,62 @@ for player in pitchers:
         player['points'] = 0
     else:
         row = match.iloc[0]
-        player['points'] = sum(row.get(stat, 0) * coeff for stat, coeff in pitcher_scoring.items() if stat in row)
+        player['points'] = sum(row.get(stat, 0) * coeff for stat, coeff in pitcher_scoring.items())
 
 if unmatched:
-    st.warning(f"Could not find stats for: {', '.join(unmatched)}. Their points set to 0.")
+    st.warning(f"No stats found for: {', '.join(unmatched)}. Points = 0.")
 
-# Optimize lineup
+# Hardcoded slots & eligibility
+hitter_slots = {'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'CI': 1, 'MI': 1, 'OF': 5, 'UTIL': 1}
+pitcher_slots = {'SP': 2, 'RP': 2, 'P': 5}
+
+hitter_eligible = {
+    'C': ['C'], '1B': ['1B'], '2B': ['2B'], '3B': ['3B'], 'SS': ['SS'],
+    'CI': ['1B', '3B'], 'MI': ['2B', 'SS'],
+    'OF': ['OF'], 'UTIL': ['C', '1B', '2B', '3B', 'SS', 'OF']
+}
+
+pitcher_eligible = {'SP': ['SP'], 'RP': ['RP'], 'P': ['SP', 'RP']}
+
+# Optimize function
 def optimize_lineup(players, slots, eligible):
     if not players:
         return {}, 0.0
-    prob = pulp.LpProblem("Lineup_Optimizer", pulp.LpMaximize)
+    prob = pulp.LpProblem("Lineup", pulp.LpMaximize)
     x = {}
     for i, p in enumerate(players):
         for s in slots:
             if set(p['positions']) & set(eligible[s]):
                 x[(i, s)] = pulp.LpVariable(f"x_{i}_{s}", cat='Binary')
-    # Objective
-    prob += pulp.lpSum(x[(i, s)] * players[i]['points'] for i, s in x.keys())
-    # Fill slots exactly
+    prob += pulp.lpSum(x[(i, s)] * players[i]['points'] for i, s in x)
     for s in slots:
         prob += pulp.lpSum(x.get((i, s), 0) for i in range(len(players))) == slots[s]
-    # Each player at most once
     for i in range(len(players)):
         prob += pulp.lpSum(x.get((i, s), 0) for s in slots) <= 1
-    # Solve
     prob.solve(pulp.PULP_CBC_CMD(msg=False))
     lineup = {s: [] for s in slots}
     for var in x:
         if x[var].value() == 1:
             i, s = var
-            lineup[s].append(f"{players[i]['name']} ({players[i]['points']:.2f} pts)")
-    total_points = pulp.value(prob.objective) or 0.0
-    return lineup, total_points
+            lineup[s].append(f"{players[i]['name']} ({players[i]['points']:.2f})")
+    return lineup, pulp.value(prob.objective) or 0.0
 
+# Button
 if st.button("Suggest Lineup"):
     if not roster:
-        st.error("Please select at least some players first.")
+        st.error("Select some players first.")
     else:
         hitter_lineup, hitter_pts = optimize_lineup(hitters, hitter_slots, hitter_eligible)
         pitcher_lineup, pitcher_pts = optimize_lineup(pitchers, pitcher_slots, pitcher_eligible)
 
-        st.header("Suggested Hitter Lineup")
-        for slot, assigned in hitter_lineup.items():
-            st.write(f"{slot}: {', '.join(assigned) or 'None'}")
-        st.write(f"Total Hitter Points: {hitter_pts:.2f}")
+        st.header("Suggested Hitters")
+        for slot, lst in hitter_lineup.items():
+            st.write(f"**{slot}**: {', '.join(lst) or 'None'}")
+        st.write(f"Hitter Points: **{hitter_pts:.2f}**")
 
-        st.header("Suggested Pitcher Lineup")
-        for slot, assigned in pitcher_lineup.items():
-            st.write(f"{slot}: {', '.join(assigned) or 'None'}")
-        st.write(f"Total Pitcher Points: {pitcher_pts:.2f}")
-        st.write(f"Grand Total: {hitter_pts + pitcher_pts:.2f}")
+        st.header("Suggested Pitchers")
+        for slot, lst in pitcher_lineup.items():
+            st.write(f"**{slot}**: {', '.join(lst) or 'None'}")
+        st.write(f"Pitcher Points: **{pitcher_pts:.2f}**")
+
+        st.write(f"**Grand Total: {hitter_pts + pitcher_pts:.2f}**")
