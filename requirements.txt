@@ -3,3 +3,5 @@ pybaseball
 pulp
 pandas
 MLB-StatsAPI
+requests
+beautifulsoup4
