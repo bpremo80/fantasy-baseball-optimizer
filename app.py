@@ -219,9 +219,19 @@ if st.button("Fetch Stats & Optimize"):
                 leftover = [players[i] for i in range(len(players)) if i not in used]
                 return lineup, total, leftover
 
-            # Prioritize specific slots first
+            # Prioritize specific hitter slots
             hitter_lineup, hitter_pts, hitter_leftover = optimize(hitters, hitter_slots, hitter_eligible)
-            pitcher_lineup, pitcher_pts, pitcher_leftover = optimize(pitchers, pitcher_slots, pitcher_eligible)
+
+            # Prioritize pitching slots: SP first, then RP, then P
+            sp_lineup, sp_pts, sp_leftover = optimize(pitchers, {'SP': 2}, {'SP': ['SP']})
+            remaining_pitchers = [p for p in pitchers if p['name'] not in [pl.split(' (')[0] for pl in sp_lineup['SP']]]
+            rp_lineup, rp_pts, rp_leftover = optimize(remaining_pitchers, {'RP': 2}, {'RP': ['RP']})
+            leftover_pitchers = [p for p in remaining_pitchers if p['name'] not in [pl.split(' (')[0] for pl in rp_lineup['RP']]]
+            p_lineup, p_pts, p_leftover = optimize(leftover_pitchers, {'P': 4}, {'P': ['SP', 'RP', 'P']})
+
+            pitcher_lineup = {**sp_lineup, **rp_lineup, **p_lineup}
+            pitcher_pts = sp_pts + rp_pts + p_pts
+            pitcher_leftover = p_leftover
 
             leftover = hitter_leftover + pitcher_leftover
             leftover.sort(key=lambda p: p['points'], reverse=True)
