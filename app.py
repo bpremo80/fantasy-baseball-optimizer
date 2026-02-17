@@ -7,25 +7,18 @@ import json
 from datetime import date, datetime
 import io
 import os
-import requests
-from bs4 import BeautifulSoup
 
 default_year = date.today().year - 1
 
 # Pre-load player names for auto-complete
 @st.cache_data(ttl=86400)
-def load_player_names(year: int) -> list:
+def load_player_names(year):
     try:
         bat = pb.batting_stats(year, qual=0)['Name'].tolist()
         pit = pb.pitching_stats(year, qual=0)['Name'].tolist()
         return sorted(set(bat + pit))
-    except Exception:
-        return [
-            "Aaron Judge", "Shohei Ohtani", "Paul Skenes", "Mookie Betts", "Freddie Freeman",
-            "Riley Greene", "Tarik Skubal", "Colt Keith", "Spencer Torkelson", "Kyle Finnegan",
-            "Dillon Dingler", "Juan Soto", "Kerry Carpenter", "Bobby Witt Jr.", "Julio Rodriguez",
-            "Kenley Jansen", "Will Vest", "Jac Caglianone"
-        ]
+    except:
+        return ["Aaron Judge", "Shohei Ohtani", "Paul Skenes", "Mookie Betts", "Freddie Freeman", "Riley Greene", "Tarik Skubal", "Colt Keith", "Spencer Torkelson", "Kyle Finnegan", "Dillon Dingler", "Juan Soto", "Kerry Carpenter", "Bobby Witt Jr.", "Julio Rodriguez", "Kenley Jansen", "Will Vest", "Jac Caglianone"]
 
 player_names = load_player_names(2025)
 
@@ -184,7 +177,7 @@ if st.button("Fetch Stats & Optimize"):
             if unmatched:
                 st.warning(f"No data for: {', '.join(unmatched)}")
 
-            # Optimization
+            # Strict optimization
             hitters = [p for p in roster if p['type'] == 'batter' and 'IL' not in p['positions']]
             pitchers = [p for p in roster if p['type'] == 'pitcher' and 'IL' not in p['positions']]
 
