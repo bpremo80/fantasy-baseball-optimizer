@@ -177,7 +177,7 @@ if st.button("Fetch Stats & Optimize"):
             if unmatched:
                 st.warning(f"No data for: {', '.join(unmatched)}")
 
-            # Strict optimization with slot priority
+            # Strict optimization with priority for high-point players in primary + UTIL
             hitters = [p for p in roster if p['type'] == 'batter' and 'IL' not in p['positions']]
             pitchers = [p for p in roster if p['type'] == 'pitcher' and 'IL' not in p['positions']]
 
@@ -204,7 +204,6 @@ if st.button("Fetch Stats & Optimize"):
                 prob += pulp.lpSum(x[(i, s)] * p['points'] for i, s in x)
                 for s in slots:
                     prob += pulp.lpSum(x.get((i, s), 0) for i in range(len(players))) == slots[s]
-                # Strict: each player used in at most ONE slot total
                 for i in range(len(players)):
                     prob += pulp.lpSum(x.get((i, s), 0) for s in slots) <= 1
                 prob.solve(pulp.PULP_CBC_CMD(msg=False))
@@ -222,7 +221,7 @@ if st.button("Fetch Stats & Optimize"):
             # Prioritize specific hitter slots
             hitter_lineup, hitter_pts, hitter_leftover = optimize(hitters, hitter_slots, hitter_eligible)
 
-            # Prioritize pitching slots: SP first, then RP, then P
+            # Prioritize pitching slots: SP first, RP next, P last
             sp_lineup, sp_pts, sp_leftover = optimize(pitchers, {'SP': 2}, {'SP': ['SP']})
             remaining_pitchers = [p for p in pitchers if p['name'] not in [pl.split(' (')[0] for pl in sp_lineup['SP']]]
             rp_lineup, rp_pts, rp_leftover = optimize(remaining_pitchers, {'RP': 2}, {'RP': ['RP']})
