@@ -7,8 +7,6 @@ import json
 from datetime import date, datetime
 import io
 import os
-import requests
-from bs4 import BeautifulSoup
 
 default_year = date.today().year - 1
 
@@ -179,7 +177,7 @@ if st.button("Fetch Stats & Optimize"):
             if unmatched:
                 st.warning(f"No data for: {', '.join(unmatched)}")
 
-            # Strict optimization
+            # Strict optimization with slot priority
             hitters = [p for p in roster if p['type'] == 'batter' and 'IL' not in p['positions']]
             pitchers = [p for p in roster if p['type'] == 'pitcher' and 'IL' not in p['positions']]
 
@@ -221,6 +219,7 @@ if st.button("Fetch Stats & Optimize"):
                 leftover = [players[i] for i in range(len(players)) if i not in used]
                 return lineup, total, leftover
 
+            # Prioritize specific slots first
             hitter_lineup, hitter_pts, hitter_leftover = optimize(hitters, hitter_slots, hitter_eligible)
             pitcher_lineup, pitcher_pts, pitcher_leftover = optimize(pitchers, pitcher_slots, pitcher_eligible)
 
