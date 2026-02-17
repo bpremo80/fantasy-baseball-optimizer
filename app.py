@@ -7,6 +7,8 @@ import json
 from datetime import date, datetime
 import io
 import os
+import requests
+from bs4 import BeautifulSoup
 
 default_year = date.today().year - 1
 
@@ -204,7 +206,7 @@ if st.button("Fetch Stats & Optimize"):
                 prob += pulp.lpSum(x[(i, s)] * p['points'] for i, s in x)
                 for s in slots:
                     prob += pulp.lpSum(x.get((i, s), 0) for i in range(len(players))) == slots[s]
-                # Strict: each player used in at most ONE slot total (prevents UTIL + position duplicate)
+                # Strict: each player used in at most ONE slot total
                 for i in range(len(players)):
                     prob += pulp.lpSum(x.get((i, s), 0) for s in slots) <= 1
                 prob.solve(pulp.PULP_CBC_CMD(msg=False))
