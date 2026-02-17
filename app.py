@@ -2,7 +2,6 @@ import streamlit as st
 import statsapi
 import pybaseball as pb
 import pandas as pd
-import pulp
 import json
 from datetime import date, datetime
 import io
@@ -18,7 +17,7 @@ def load_player_names(year):
         pit = pb.pitching_stats(year, qual=0)['Name'].tolist()
         return sorted(set(bat + pit))
     except:
-        return ["Aaron Judge", "Shohei Ohtani", "Paul Skenes", "Mookie Betts", "Freddie Freeman", "Riley Greene", "Tarik Skubal", "Colt Keith", "Spencer Torkelson", "Kyle Finnegan", "Dillon Dingler", "Juan Soto", "Kerry Carpenter", "Bobby Witt Jr.", "Julio Rodriguez", "Kenley Jansen", "Will Vest"]
+        return ["Aaron Judge", "Shohei Ohtani", "Paul Skenes", "Mookie Betts", "Freddie Freeman", "Riley Greene", "Tarik Skubal", "Colt Keith", "Spencer Torkelson", "Kyle Finnegan", "Dillon Dingler", "Juan Soto", "Kerry Carpenter", "Bobby Witt Jr.", "Julio Rodriguez", "Kenley Jansen", "Will Vest", "Jac Caglianone"]
 
 player_names = load_player_names(2025)
 
@@ -177,51 +176,36 @@ if st.button("Fetch Stats & Optimize"):
             if unmatched:
                 st.warning(f"No data for: {', '.join(unmatched)}")
 
-            # Strict optimization with priority for high-point players in primary + UTIL
+            # Greedy hitter optimization: highest-point eligible for primary slots, then UTIL
             hitters = [p for p in roster if p['type'] == 'batter' and 'IL' not in p['positions']]
             pitchers = [p for p in roster if p['type'] == 'pitcher' and 'IL' not in p['positions']]
 
-            hitter_slots = {'C': 1, '1B': 1, '2B': 1, '3B': 1, 'SS': 1, 'OF': 3, 'UTIL': 2}
-            pitcher_slots = {'SP': 2, 'RP': 2, 'P': 4}
-            bn_slots = 5
-            il_slots = 4
-
+            hitter_slots = ['C', '1B', '2B', '3B', 'SS', 'OF']
             hitter_eligible = {
                 'C': ['C'], '1B': ['1B'], '2B': ['2B'], '3B': ['3B'], 'SS': ['SS'], 'OF': ['OF'],
                 'UTIL': ['C', '1B', '2B', '3B', 'SS', 'OF', 'UTIL']
             }
+
+            # Assign primary slots greedily (highest point eligible per slot)
+            assigned = {}
+            available_hitters = hitters.copy()
+            for slot in hitter_slots:
+                eligible_players = [p for p in available_hitters if slot in p['positions'] or 'UTIL' in p['positions']]
+                if eligible_players:
+                    best = max(eligible_players, key=lambda p: p['points'])
+                    assigned[slot] = f"{best['name']} ({best['points']:.2f})"
+                    available_hitters.remove(best)
+
+            # Assign UTIL with remaining highest-point players
+            util_players = sorted(available_hitters, key=lambda p: p['points'], reverse=True)[:2]
+            assigned['UTIL'] = ', '.join(f"{p['name']} ({p['points']:.2f})" for p in util_players) or 'None'
+
+            hitter_pts = sum(p['points'] for p in hitters if p['name'] in assigned.values())
+
+            # Pitching optimization (prioritized)
+            pitcher_slots = {'SP': 2, 'RP': 2, 'P': 4}
             pitcher_eligible = {'SP': ['SP'], 'RP': ['RP'], 'P': ['SP', 'RP', 'P']}
 
-            def optimize(players, slots, eligible):
-                if not players:
-                    return {}, 0.0, players
-                prob = pulp.LpProblem("Optimizer", pulp.LpMaximize)
-                x = {}
-                for i, p in enumerate(players):
-                    for s in slots:
-                        if set(p['positions']) & set(eligible[s]):
-                            x[(i, s)] = pulp.LpVariable(f"x_{i}_{s}", cat='Binary')
-                prob += pulp.lpSum(x[(i, s)] * p['points'] for i, s in x)
-                for s in slots:
-                    prob += pulp.lpSum(x.get((i, s), 0) for i in range(len(players))) == slots[s]
-                for i in range(len(players)):
-                    prob += pulp.lpSum(x.get((i, s), 0) for s in slots) <= 1
-                prob.solve(pulp.PULP_CBC_CMD(msg=False))
-                lineup = {s: [] for s in slots}
-                used = set()
-                for var in x:
-                    if x[var].value() == 1:
-                        i, s = var
-                        lineup[s].append(f"{players[i]['name']} ({players[i]['points']:.2f})")
-                        used.add(i)
-                total = pulp.value(prob.objective) or 0.0
-                leftover = [players[i] for i in range(len(players)) if i not in used]
-                return lineup, total, leftover
-
-            # Prioritize specific hitter slots
-            hitter_lineup, hitter_pts, hitter_leftover = optimize(hitters, hitter_slots, hitter_eligible)
-
-            # Prioritize pitching slots: SP first, RP next, P last
             sp_lineup, sp_pts, sp_leftover = optimize(pitchers, {'SP': 2}, {'SP': ['SP']})
             remaining_pitchers = [p for p in pitchers if p['name'] not in [pl.split(' (')[0] for pl in sp_lineup['SP']]]
             rp_lineup, rp_pts, rp_leftover = optimize(remaining_pitchers, {'RP': 2}, {'RP': ['RP']})
@@ -232,19 +216,20 @@ if st.button("Fetch Stats & Optimize"):
             pitcher_pts = sp_pts + rp_pts + p_pts
             pitcher_leftover = p_leftover
 
-            leftover = hitter_leftover + pitcher_leftover
+            leftover = [p for p in available_hitters if p['name'] not in util_players] + pitcher_leftover
             leftover.sort(key=lambda p: p['points'], reverse=True)
-            bn = [f"{p['name']} ({p['points']:.2f})" for p in leftover[:bn_slots]]
-            unused = leftover[bn_slots:]
+            bn = [f"{p['name']} ({p['points']:.2f})" for p in leftover[:5]]
+            unused = leftover[5:]
 
             il_players = [p for p in roster if 'IL' in p['positions']]
-            il = [f"{p['name']} (0 pts)" for p in il_players[:il_slots]]
-            extra_il = [f"{p['name']} (0 pts)" for p in il_players[il_slots:]] if len(il_players) > il_slots else []
+            il = [f"{p['name']} (0 pts)" for p in il_players[:4]]
+            extra_il = [f"{p['name']} (0 pts)" for p in il_players[4:]] if len(il_players) > 4 else []
 
             st.header("Optimized Lineup")
             st.subheader("Hitters")
-            for slot, assigned in hitter_lineup.items():
-                st.write(f"{slot}: {', '.join(assigned) or 'None'}")
+            for slot in hitter_slots + ['UTIL']:
+                assigned = assigned.get(slot, 'None')
+                st.write(f"{slot}: {assigned}")
             st.write(f"Hitter Points: {hitter_pts:.2f}")
 
             st.subheader("Pitchers")
