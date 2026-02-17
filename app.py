@@ -7,8 +7,6 @@ import json
 from datetime import date, datetime
 import io
 import os
-import requests
-from bs4 import BeautifulSoup
 
 default_year = date.today().year - 1
 
@@ -20,12 +18,7 @@ def load_player_names(year):
         pit = pb.pitching_stats(year, qual=0)['Name'].tolist()
         return sorted(set(bat + pit))
     except:
-        return [
-            "Aaron Judge", "Shohei Ohtani", "Paul Skenes", "Mookie Betts", "Freddie Freeman",
-            "Riley Greene", "Tarik Skubal", "Colt Keith", "Spencer Torkelson", "Kyle Finnegan",
-            "Dillon Dingler", "Juan Soto", "Kerry Carpenter", "Bobby Witt Jr.", "Julio Rodriguez",
-            "Kenley Jansen", "Will Vest", "Jac Caglianone"
-        ]
+        return ["Aaron Judge", "Shohei Ohtani", "Paul Skenes", "Mookie Betts", "Freddie Freeman", "Riley Greene", "Tarik Skubal", "Colt Keith", "Spencer Torkelson", "Kyle Finnegan", "Dillon Dingler", "Juan Soto", "Kerry Carpenter", "Bobby Witt Jr.", "Julio Rodriguez", "Kenley Jansen", "Will Vest", "Jac Caglianone"]
 
 player_names = load_player_names(2025)
 
@@ -76,36 +69,6 @@ pitcher_map = {
     'IBB': 'intentionalWalks', 'HBP': 'hitByPitch', 'SO': 'strikeouts', 'WP': 'wildPitches',
     'HLD': 'holds', 'BS': 'blownSaves'
 }
-
-# ────────────────────────────────────────────────
-# OPTIMIZATION FUNCTION (moved here so it's defined before calls)
-# ────────────────────────────────────────────────
-def optimize(players, slots, eligible):
-    if not players:
-        return {}, 0.0, players
-    prob = pulp.LpProblem("Optimizer", pulp.LpMaximize)
-    x = {}
-    for i, p in enumerate(players):
-        for s in slots:
-            if set(p['positions']) & set(eligible[s]):
-                x[(i, s)] = pulp.LpVariable(f"x_{i}_{s}", cat='Binary')
-    prob += pulp.lpSum(x[(i, s)] * p['points'] for i, s in x)
-    for s in slots:
-        prob += pulp.lpSum(x.get((i, s), 0) for i in range(len(players))) == slots[s]
-    # Strict: each player used in at most ONE slot total
-    for i in range(len(players)):
-        prob += pulp.lpSum(x.get((i, s), 0) for s in slots) <= 1
-    prob.solve(pulp.PULP_CBC_CMD(msg=False))
-    lineup = {s: [] for s in slots}
-    used = set()
-    for var in x:
-        if x[var].value() == 1:
-            i, s = var
-            lineup[s].append(f"{players[i]['name']} ({players[i]['points']:.2f})")
-            used.add(i)
-    total = pulp.value(prob.objective) or 0.0
-    leftover = [players[i] for i in range(len(players)) if i not in used]
-    return lineup, total, leftover
 
 # Roster Management
 st.header("Step 1: Build or Upload Roster")
@@ -214,7 +177,7 @@ if st.button("Fetch Stats & Optimize"):
             if unmatched:
                 st.warning(f"No data for: {', '.join(unmatched)}")
 
-            # Optimization
+            # Strict optimization with global max points
             hitters = [p for p in roster if p['type'] == 'batter' and 'IL' not in p['positions']]
             pitchers = [p for p in roster if p['type'] == 'pitcher' and 'IL' not in p['positions']]
 
@@ -223,11 +186,39 @@ if st.button("Fetch Stats & Optimize"):
             bn_slots = 5
             il_slots = 4
 
+            # All batters are eligible for UTIL
             hitter_eligible = {
                 'C': ['C'], '1B': ['1B'], '2B': ['2B'], '3B': ['3B'], 'SS': ['SS'], 'OF': ['OF'],
-                'UTIL': ['C', '1B', '2B', '3B', 'SS', 'OF', 'UTIL']
+                'UTIL': ['C', '1B', '2B', '3B', 'SS', 'OF', 'UTIL']  # All batters can fill UTIL
             }
             pitcher_eligible = {'SP': ['SP'], 'RP': ['RP'], 'P': ['SP', 'RP', 'P']}
+
+            def optimize(players, slots, eligible):
+                if not players:
+                    return {}, 0.0, players
+                prob = pulp.LpProblem("Optimizer", pulp.LpMaximize)
+                x = {}
+                for i, p in enumerate(players):
+                    for s in slots:
+                        if set(p['positions']) & set(eligible[s]):
+                            x[(i, s)] = pulp.LpVariable(f"x_{i}_{s}", cat='Binary')
+                prob += pulp.lpSum(x[(i, s)] * p['points'] for i, s in x)
+                for s in slots:
+                    prob += pulp.lpSum(x.get((i, s), 0) for i in range(len(players))) == slots[s]
+                # Strict: each player used in at most ONE slot total
+                for i in range(len(players)):
+                    prob += pulp.lpSum(x.get((i, s), 0) for s in slots) <= 1
+                prob.solve(pulp.PULP_CBC_CMD(msg=False))
+                lineup = {s: [] for s in slots}
+                used = set()
+                for var in x:
+                    if x[var].value() == 1:
+                        i, s = var
+                        lineup[s].append(f"{players[i]['name']} ({players[i]['points']:.2f})")
+                        used.add(i)
+                total = pulp.value(prob.objective) or 0.0
+                leftover = [players[i] for i in range(len(players)) if i not in used]
+                return lineup, total, leftover
 
             hitter_lineup, hitter_pts, hitter_leftover = optimize(hitters, hitter_slots, hitter_eligible)
 
